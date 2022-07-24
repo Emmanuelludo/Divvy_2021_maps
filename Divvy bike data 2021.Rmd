@@ -1,0 +1,220 @@
+---
+title: "R Notebook"
+author: "Emmanuel"
+output:
+  pdf_document: default
+  html_document:
+    df_print: paged
+---
+
+## Load libraries
+
+```{r}
+pacman::p_load(pacman,tidyverse,lubridate,rio)
+```
+
+```{r echo=FALSE, message=FALSE,results='hide'}
+getwd()
+setwd('C:/Users/dell/Desktop/Code/R/Cyclistic')
+```
+
+## Import datasets
+
+```{r echo=FALSE, message=FALSE}
+jan_21 <- import("2021-divvy-tripdata/202101-divvy-tripdata.csv")
+feb_21 <- import("2021-divvy-tripdata/202102-divvy-tripdata.csv")
+mar_21 <- import("2021-divvy-tripdata/202103-divvy-tripdata.csv")
+apr_21 <- import("2021-divvy-tripdata/202104-divvy-tripdata.csv")
+may_21 <- import("2021-divvy-tripdata/202105-divvy-tripdata.csv")
+jun_21 <- import("2021-divvy-tripdata/202106-divvy-tripdata.csv")
+jul_21 <- import("2021-divvy-tripdata/202107-divvy-tripdata.csv")
+aug_21 <- import("2021-divvy-tripdata/202108-divvy-tripdata.csv")
+sep_21 <- import("2021-divvy-tripdata/202109-divvy-tripdata.csv")
+oct_21 <- import("2021-divvy-tripdata/202110-divvy-tripdata.csv")
+nov_21 <- import("2021-divvy-tripdata/202111-divvy-tripdata.csv")
+dec_21 <- import("2021-divvy-tripdata/202112-divvy-tripdata.csv")
+
+```
+
+```{r}
+colnames(jan_21)
+colnames(feb_21)
+colnames(mar_21)
+colnames(apr_21)
+colnames(may_21)
+colnames(jan_21) == colnames(feb_21)
+colnames(may_21) == colnames(dec_21)
+
+
+
+
+
+
+```
+
+
+### Inspect data for inconsistencies
+
+```{r}
+str(jan_21)
+str(may_21)
+str(nov_21)
+str(aug_21)
+
+```
+
+### Stack individual quarter's data frames into one big data frame
+
+```{r echo=FALSE, message=FALSE,results='hide'}
+all_trips <- bind_rows( jan_21,feb_21,
+                        mar_21,apr_21,
+                        may_21,jun_21,
+                        jul_21,aug_21,
+                        sep_21,oct_21,
+                        nov_21,dec_21
+                        )
+```
+## CLEAN UP AND ADD DATA TO PREPARE FOR ANALYSIS
+
+```{r echo=FALSE, message=FALSE }
+colnames(all_trips)  #List of column names
+nrow(all_trips)  #How many rows are in data frame?
+dim(all_trips)  #Dimensions of the data frame?
+head(all_trips)  #See the first 6 rows of data frame.  Also tail(all_trips)
+str(all_trips)  #See list of columns and data types (numeric, character, etc)
+summary(all_trips)  #Statistical summary of data. Mainly for numerics
+```
+
+### Check member_casuals
+
+```{r}
+unique(all_trips$member_casual)
+```
+
+### Calculate trip duration (in seconds)
+
+```{r echo=FALSE, message=FALSE}
+all_trips$trip_duration <- difftime(all_trips$ended_at,all_trips$started_at,units=c('secs'))
+```
+
+### Create day, month, year, fields 
+```{r echo=FALSE, message=FALSE,results='hide'}
+
+all_trips$date <- as.Date(all_trips$started_at) #The default format is yyyy-mm-dd
+all_trips$month <- format(as.Date(all_trips$date), "%m")
+all_trips$day <- format(as.Date(all_trips$date), "%d")
+all_trips$year <- format(as.Date(all_trips$date), "%Y")
+all_trips$day_of_week <- format(as.Date(all_trips$date), "%A")
+
+```
+
+
+```{r}
+str(all_trips)
+summary(all_trips)
+```
+
+### Drop bad data
+
+```{r echo=-3}
+all_trips %>% filter(all_trips$trip_duration<0)
+all_trips [all_trips$start_station_name == "HQ QR"]
+
+#all_trips <- all_trips[!(all_trips$start_station_name == "HQ QR" | all_trips$trip_duration<0),]
+```
+
+No HQ QR checks recorded in time period
+
+
+```{r}
+all_trips$end_lat %>% is.na() %>% sum()
+
+```
+
+
+
+## DESCRIPTIVE ANALYSIS
+
+
+```{r}
+# Compare members and casual users
+aggregate(all_trips$trip_duration ~ all_trips$member_casual, FUN = mean)
+aggregate(all_trips$trip_duration ~ all_trips$member_casual, FUN = median)
+aggregate(all_trips$trip_duration ~ all_trips$member_casual, FUN = max)
+aggregate(all_trips$trip_duration ~ all_trips$member_casual, FUN = min)
+
+```
+
+See the average ride time by each day for members vs casual users
+
+```{r}
+all_trips$day_of_week <- ordered(all_trips$day_of_week, levels=c("Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"))
+
+all_trips %>% 
+  group_by(all_trips$member_casual, all_trips$day_of_week) %>% 
+  summarise(average_trip_duration = mean(trip_duration))
+```
+
+```{r}
+aggregate(all_trips$trip_duration ~ all_trips$member_casual + all_trips$day_of_week, FUN = mean)
+```
+
+
+2021 Observations
+-   Casual users ride have a longer trip duration than members on average
+-   Decrease in average trip duration across usertypes with casyual members having up to a 30% decrease in trip durations from 2019
+-   Usage pattern similar accross usertypes with weekend spikes in usage unlike in 2019.
+
+### Analyze ridership data by type and weekday
+
+```{r}
+all_trips %>% 
+  mutate(weekday = wday(started_at, label = TRUE)) %>%  #creates weekday field using wday()
+  group_by(member_casual, weekday) %>%                       #groups by member_casual and weekday
+  summarise(number_of_rides = n()                            #calculates the number of rides and average duration 
+  ,average_duration = mean(trip_duration)) %>%         # calculates the average duration
+  arrange(member_casual, weekday)                                # sorts
+```
+
+### Let's visualize the number of rides by rider type
+
+```{r, echo=FALSE, message=FALSE}
+all_trips %>% 
+  mutate(weekday = wday(started_at, label = TRUE)) %>% 
+  group_by(member_casual, weekday) %>% 
+  summarise(number_of_rides = n()
+            ,average_duration = mean(trip_duration)) %>% 
+  arrange(member_casual, weekday)  %>% 
+  ggplot(aes(x = weekday, y = number_of_rides, fill = member_casual)) +
+  geom_col(position = "dodge")
+```
+
+### Let's create a visualization for average duration
+
+```{r, echo=FALSE, message=FALSE}
+all_trips %>% 
+  mutate(weekday = wday(started_at, label = TRUE)) %>% 
+  group_by(member_casual, weekday) %>% 
+  summarise(number_of_rides = n()
+            ,average_duration = mean(trip_duration)) %>% 
+  arrange(member_casual, weekday)  %>% 
+  ggplot(aes(x = weekday, y = average_duration, fill = member_casual)) +
+  geom_col(position = "dodge")
+```
+
+```{r, echo=FALSE, message=FALSE}
+all_trips %>% 
+  group_by(member_casual, day_of_week) %>% 
+  summarise(average_duration = mean(trip_duration)) %>%
+  ggplot(aes(x = day_of_week, y = average_duration,color=member_casual)) +
+  geom_point()+geom_line()
+```
+
+## Exports
+```{r}
+export(all_trips,'all_trips_2021.csv')
+
+```
+
+
+
